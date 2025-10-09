@@ -39,6 +39,8 @@ jobs:
     name: Check What's new
     runs-on: ubuntu-latest
     needs: get-commits
+    outputs:
+      smallest_missing_pr: ${{ steps.review-docs-step.outputs.smallest_missing_pr }}
     env:
       COMMITS: ${{ needs.get-commits.outputs.subjects }}
     steps:
@@ -46,12 +48,150 @@ jobs:
       - name: Print COMMITS
         run: |
           echo "Received COMMITS: $COMMITS"
-      - name: Review docs
+      - id: review-docs-step
+        name: Review docs
         run: |
           shopt -s globstar
+          SMALLEST_MISSING_PR=""
           while IFS= read -r COMMIT; do
             PULL_NUM="$(echo "$COMMIT" | rev | cut -d'#' -f1 | rev | cut -d')' -f1)"
             if ! grep --quiet --extended-regexp "#$PULL_NUM\b|https://github.com/amber-lang/amber/pull/#$PULL_NUM\b" docs/**/*.md; then
               echo "::warning title=Docs for upcoming release::Missing \"$COMMIT\""
+              if [ -z "$SMALLEST_MISSING_PR" ] || [ "$PULL_NUM" -lt "$SMALLEST_MISSING_PR" ]; then
+                SMALLEST_MISSING_PR="$PULL_NUM"
+              fi
             fi
           done <<< "$COMMITS"
+
+          if [ -n "$SMALLEST_MISSING_PR" ]; then
+            echo "smallest_missing_pr=$SMALLEST_MISSING_PR" >> "$GITHUB_OUTPUT"
+          fi
+
+  create-pr:
+    name: Get PR info for missing docs
+    runs-on: ubuntu-latest
+    needs: review
+    if: ${{ needs.review.outputs.smallest_missing_pr != '' }}
+    outputs:
+      explanation_response: ${{ steps.explanation.outputs.response }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Get PR info
+        env:
+          GH_TOKEN: ${{ secrets.AMBER_GITHUB_TOKEN }}
+          PR_NUMBER: ${{ needs.review.outputs.smallest_missing_pr }}
+        run: |
+          echo "Attempting to get info for PR #$PR_NUMBER from amber-lang/amber"
+          PR_VIEW_OUTPUT=$(gh pr view "$PR_NUMBER" --repo amber-lang/amber)
+          echo "PR_VIEW_OUTPUT<<EOF" >> "$GITHUB_ENV"
+          echo "$PR_VIEW_OUTPUT" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+
+          echo "--- PR Diff ---"
+          PR_DIFF_OUTPUT=$(gh pr diff "$PR_NUMBER" --repo amber-lang/amber)
+          echo "PR_DIFF_OUTPUT<<EOF" >> "$GITHUB_ENV"
+          echo "$PR_DIFF_OUTPUT" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+          echo "--- End of PR Diff ---"
+
+      - name: Get latest docs version and content
+        id: get-docs-content
+        run: |
+          LATEST_DOCS_VERSION_DIR=$(ls -d docs/*/ | sort -V | tail -n 1)
+          echo "Latest docs version directory: $LATEST_DOCS_VERSION_DIR"
+
+          WHATS_NEW_PATH="${LATEST_DOCS_VERSION_DIR}getting_started/whats_new.md"
+          MIGRATION_GUIDE_PATH="${LATEST_DOCS_VERSION_DIR}getting_started/migration_guide.md"
+
+          WHATS_NEW_CONTENT=$(cat "$WHATS_NEW_PATH")
+          MIGRATION_GUIDE_CONTENT=$(cat "$MIGRATION_GUIDE_PATH")
+
+          echo "WHATS_NEW_MD_CONTENT<<EOF" >> "$GITHUB_ENV"
+          echo "$WHATS_NEW_CONTENT" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+
+          echo "MIGRATION_GUIDE_MD_CONTENT<<EOF" >> "$GITHUB_ENV"
+          echo "$MIGRATION_GUIDE_CONTENT" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+
+      - uses: ai-action/ollama-action@v1
+        id: explanation
+        with:
+          model: gpt-oss
+          prompt: |
+            The following Pull Request (PR) information is available:
+            PR View Output:
+            ```
+            ${{ env.PR_VIEW_OUTPUT }}
+            ```
+            PR Diff Output:
+            ```
+            ${{ env.PR_DIFF_OUTPUT }}
+            ```
+
+            Here is the current content of 'whats_new.md' (path: ${{ env.WHATS_NEW_PATH }}):
+            ```
+            ${{ env.WHATS_NEW_MD_CONTENT }}
+            ```
+
+            Here is the current content of 'migration_guide.md' (path: ${{ env.MIGRATION_GUIDE_PATH }}):
+            ```
+            ${{ env.MIGRATION_GUIDE_MD_CONTENT }}
+            ```
+
+            Please provide a shell script that, when executed, will update either 'whats_new.md' or 'migration_guide.md' (choose the most appropriate one) to include the information from the PR.
+            The script should use standard shell commands (e.g., echo, sed, cat) to modify the file.
+            Ensure that the added content includes a comment referencing the PR number, for example: "<!-- PR #${{ needs.review.outputs.smallest_missing_pr }} -->".
+            The script should be self-contained and directly executable.
+            Only output the script, no additional text or explanations.
+            When generating the script, if you need to include multi-line strings or content that might contain special shell characters (like backticks), please use a heredoc with a quoted EOF marker (e.g., \`cat <<\'EOF_CONTENT\'\`) to ensure the content is treated literally.
+
+  update-and-create-pr:
+    name: Update Docs and Create PR
+    runs-on: ubuntu-latest
+    needs: create-pr
+    if: ${{ needs.create-pr.outputs.explanation_response != 'No changes needed.' }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Apply changes
+        id: apply-script
+        run: |
+          echo "Applying changes to documentation files..."
+          RESPONSE=$(cat <<'EOF_RESPONSE'
+          ${{ needs.create-pr.outputs.explanation_response }}
+          EOF_RESPONSE
+          )
+          if [ "$RESPONSE" != "No changes needed." ]; then
+            # Extract and print only the thinking process
+            THINKING_PROCESS=$(sed -n '/^Thinking.../,/...done thinking.$/p' <<< "$RESPONSE")
+            if [ -n "$THINKING_PROCESS" ]; then
+              echo "::group::Ollama's thinking process"
+              echo "$THINKING_PROCESS"
+              echo "::endgroup::"
+            fi
+
+            # Filter out multi-line thinking messages and markdown code block fences from Ollama's response for execution
+            CLEAN_RESPONSE=$(sed '/^Thinking.../,/...done thinking.$/d' <<< "$RESPONSE" | grep -v '^```bash' | grep -v '^```$')
+            echo "::group::Executing the following script"
+            echo "$CLEAN_RESPONSE"
+            echo "::endgroup::"
+            bash <<< "$CLEAN_RESPONSE"
+            echo "changes_made=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No changes needed according to Ollama."
+            echo "changes_made=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Create Pull Request
+        if: ${{ steps.apply-script.outputs.changes_made == 'true' }}
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          committer: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+          author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+          commit-message: "Docs: Automated update for PR ${{ needs.review.outputs.smallest_missing_pr }}"
+          title: "Docs: Automated update for PR ${{ needs.review.outputs.smallest_missing_pr }}"
+          body: |
+            Automated documentation update based on PR ${{ needs.review.outputs.smallest_missing_pr }} from amber-lang/amber.
+            This PR was generated by the prerelease check workflow.
+          branch: automated-docs-update-${{ needs.review.outputs.smallest_missing_pr }}
+          base: main
