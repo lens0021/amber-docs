@@ -29,7 +29,7 @@ import { array_extract_at } from "std/array"
 let array = [1, 2, 3]
 let element = array_extract_at(array, 1)
 echo element // Outputs 2
-echo array // Outputs [1, 3]
+echo(array) // Outputs [1, 3]
 ```
 
 ## `array_filled`
@@ -46,7 +46,7 @@ is less than zero an empty array is returned
 import { array_filled } from "std/array"
 
 let array = array_filled(5, 1)
-echo array // Outputs [1, 1, 1, 1, 1]
+echo(array) // Outputs [1, 1, 1, 1, 1]
 ```
 
 ## `array_find`
@@ -128,8 +128,8 @@ import { array_pop } from "std/array"
 
 let array = [1, 2, 3]
 let element = array_pop(array)
-echo element // Outputs 3
-echo array // Outputs [1, 2]
+echo(element) // Outputs 3
+echo(array) // Outputs [1, 2]
 ```
 
 ## `array_remove_at`
@@ -147,7 +147,7 @@ import { array_remove_at } from "std/array"
 
 let array = [1, 2, 3]
 array_remove_at(array, 1)
-echo array // Outputs [1, 3]
+echo(array) // Outputs [1, 3]
 ```
 
 ## `array_shift`
@@ -165,7 +165,45 @@ import { array_shift } from "std/array"
 
 let array = [1, 2, 3]
 let element = array_shift(array)
-echo element // Outputs 1
-echo array // Outputs [2, 3]
+echo(element) // Outputs 1
+echo(array) // Outputs [2, 3]
+```
+
+## `sort`
+
+```ab
+pub fun sort(ref array: [], desc: Bool = false, version_sort: Bool = false): Null 
+```
+
+Sort the array in-place.
+Pass `desc` value `true` for descending order.
+Pass `version_sort` value `true` for version sort,
+this only applies to text arrays.
+
+### Usage
+```ab
+import { sort } from "std/array"
+
+let array = ["15","-3","foo","bar"]
+sort(array)
+echo(array) // Outputs ["-3", "15", "bar", "foo"]
+```
+
+## `sorted`
+
+```ab
+pub fun sorted(array: [], desc: Bool = false, version_sort: Bool = false): [] 
+```
+
+Return the sorted array, leaving the original array unchanged.
+Pass `desc` value `true` for descending order.
+Pass `version_sort` value `true` for version sort,
+this only applies to text arrays.
+
+### Usage
+```ab
+import { sorted } from "std/array"
+
+echo(sorted([-3,15,7,2], true)) // Outputs [-3, 2, 7, 15]
 ```
 
