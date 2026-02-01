@@ -26,21 +26,10 @@ Checks if a directory exists.
 import { dir_exists } from "std/fs"
 
 if dir_exists("/tmp/mydir") {
-echo "Directory exists"
+    echo("Directory exists")
 }
 ```
 
-## `escape_non_glob_chars`
-
-```ab
-fun escape_non_glob_chars(path: Text): Text 
-```
-
-Escapes all characters in the passed-in glob except "*", "?" and "/",
-to prevent injection attacks.
-```ab
-import { escape_non_glob_chars } from "std/fs"
-```
 ## `file_append`
 
 ```ab
@@ -92,6 +81,23 @@ import { file_chown } from "std/fs"
 file_chown("/var/www/html", "www-data")
 ```
 
+## `file_compress`
+
+```ab
+pub fun file_compress(files: [Text], target: Text): Null? 
+```
+
+Compress file(s) or directories into an archive
+Supports: bz2, gz, xz, bz2, deb, rar, rpm, tar(gz/xz/bz), zip(war/jar), 7z
+Note: Not all supported methods support multiple files/directories
+### Usage
+```ab
+import { file_compress } from "std/fs"
+
+file_compress(["main.ab", "src"], "amber.tar.gz")?
+file_compress(["amber"], "amber.gz")?
+```
+
 ## `file_exists`
 
 ```ab
@@ -105,7 +111,7 @@ Checks if a file exists.
 import { file_exists } from "std/fs"
 
 if file_exists("config.txt") {
-echo "File exists"
+    echo("File exists")
 }
 ```
 
@@ -129,7 +135,7 @@ file_extract("archive.tar.gz", "/tmp/extracted")
 ## `file_glob`
 
 ```ab
-pub fun file_glob(path: Text): [Text]? 
+pub fun file_glob(path: Text): [Text] 
 ```
 
 Finds all files or directories matching a file glob.
@@ -144,7 +150,7 @@ let files = file_glob("*.txt")
 ## `file_glob_all`
 
 ```ab
-pub fun file_glob_all(paths: [Text]): [Text]? 
+pub fun file_glob_all(paths: [Text]): [Text] 
 ```
 
 Finds all files or directories matching multiple file globs. When
