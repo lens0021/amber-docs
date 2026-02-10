@@ -68,12 +68,10 @@ jobs:
           fi
 
   create-pr:
-    name: Get PR info for missing docs
+    name: Update Docs and Create PR
     runs-on: ubuntu-latest
     needs: review
     if: ${{ needs.review.outputs.smallest_missing_pr != '' }}
-    outputs:
-      explanation_response: ${{ steps.explanation.outputs.response }}
     steps:
       - uses: actions/checkout@v5
       - name: Get PR info
@@ -106,6 +104,9 @@ jobs:
           WHATS_NEW_CONTENT=$(cat "$WHATS_NEW_PATH")
           MIGRATION_GUIDE_CONTENT=$(cat "$MIGRATION_GUIDE_PATH")
 
+          echo "WHATS_NEW_PATH=$WHATS_NEW_PATH" >> "$GITHUB_ENV"
+          echo "MIGRATION_GUIDE_PATH=$MIGRATION_GUIDE_PATH" >> "$GITHUB_ENV"
+
           echo "WHATS_NEW_MD_CONTENT<<EOF" >> "$GITHUB_ENV"
           echo "$WHATS_NEW_CONTENT" >> "$GITHUB_ENV"
           echo "EOF" >> "$GITHUB_ENV"
@@ -114,10 +115,41 @@ jobs:
           echo "$MIGRATION_GUIDE_CONTENT" >> "$GITHUB_ENV"
           echo "EOF" >> "$GITHUB_ENV"
 
-      - uses: ai-action/ollama-action@v1
+      - name: Install & Setup Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve &
+          echo "Waiting for Ollama..."
+          until curl -s http://localhost:11434/api/tags > /dev/null; do sleep 1; done
+          ollama pull gpt-oss
+
+      - name: Configure OpenCode
+        run: |
+          mkdir -p ~/.config/opencode
+          cat <<EOF > ~/.config/opencode/opencode.json
+          {
+            "\$schema": "https://opencode.ai/config.json",
+            "provider": {
+              "ollama": {
+                "npm": "@ai-sdk/openai-compatible",
+                "name": "Ollama",
+                "options": {
+                  "baseURL": "http://localhost:11434/v1"
+                },
+                "models": {
+                  "gpt-oss": {
+                    "name": "gpt-oss"
+                  }
+                }
+              }
+            }
+          }
+          EOF
+
+      - uses: anomalyco/opencode/github@latest
         id: explanation
         with:
-          model: gpt-oss
+          model: ollama/gpt-oss
           prompt: |
             The following Pull Request (PR) information is available:
             PR View Output:
@@ -139,44 +171,10 @@ jobs:
             ${{ env.MIGRATION_GUIDE_MD_CONTENT }}
             ```
 
-            Please provide a shell script that, when executed, will update either 'whats_new.md' or 'migration_guide.md' (choose the most appropriate one) to include the information from the PR.
-            The script should use standard shell commands (e.g., echo, sed, cat) to modify the file.
-            Ensure that the added content includes a comment referencing the PR number, for example: "<!-- PR #${{ needs.review.outputs.smallest_missing_pr }} -->".
-            The script should be self-contained and directly executable.
-            Only output the script, no additional text or explanations.
-            When generating the script, if you need to include multi-line strings or content that might contain special shell characters (like backticks), please use a heredoc with a quoted EOF marker (e.g., \`cat <<\'EOF_CONTENT\'\`) to ensure the content is treated literally.
+            Please update either '${{ env.WHATS_NEW_PATH }}' or '${{ env.MIGRATION_GUIDE_PATH }}' (choose the most appropriate one) to include the information from the PR.
+            Add the new content directly to the file.
+            Ensure you include a comment referencing the PR number, like: "<!-- PR #${{ needs.review.outputs.smallest_missing_pr }} -->".
 
-  update-and-create-pr:
-    name: Update Docs and Create PR
-    runs-on: ubuntu-latest
-    needs:
-      - review
-      - create-pr
-    if: ${{ needs.review.outputs.smallest_missing_pr != '' }}
-    steps:
-      - uses: actions/checkout@v5
-      - name: Apply changes
-        id: apply-script
-        run: |
-          echo "Applying changes to documentation files..."
-          RESPONSE=$(cat <<'EOF_RESPONSE'
-          ${{ needs.create-pr.outputs.explanation_response }}
-          EOF_RESPONSE
-          )
-          # Extract and print only the thinking process
-          THINKING_PROCESS=$(sed -n '/^Thinking.../,/...done thinking.$/p' <<< "$RESPONSE")
-          if [ -n "$THINKING_PROCESS" ]; then
-            echo "::group::Ollama's thinking process"
-            echo "$THINKING_PROCESS"
-            echo "::endgroup::"
-          fi
-
-          # Filter out multi-line thinking messages and markdown code block fences from Ollama's response for execution
-          CLEAN_RESPONSE=$(sed '/^Thinking.../,/...done thinking.$/d' <<< "$RESPONSE" | grep -v '^```bash' | grep -v '^```$')
-          echo "::group::Executing the following script"
-          echo "$CLEAN_RESPONSE"
-          echo "::endgroup::"
-          bash <<< "$CLEAN_RESPONSE"
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
         with:
