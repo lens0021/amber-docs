@@ -162,6 +162,8 @@ jobs:
             Update either '${{ env.WHATS_NEW_PATH }}' or '${{ env.MIGRATION_GUIDE_PATH }}' (choose the most appropriate one) to include the information from the PR.
             Add the new content directly to the file.
             Ensure you include a comment referencing the PR number, like: "<!-- PR #${{ needs.review.outputs.smallest_missing_pr }} -->".
+        env:
+          GITHUB_TOKEN: ${{ secrets.AMBER_GITHUB_TOKEN }}
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
