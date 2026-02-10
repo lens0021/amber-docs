@@ -109,8 +109,10 @@ jobs:
           echo "MIGRATION_GUIDE_PATH=$MIGRATION_GUIDE_PATH" >> "$GITHUB_ENV"
 
       - name: Install & Setup Ollama
+        uses: ai-action/setup-ollama@v2
+
+      - name: Start Ollama server and pull model
         run: |
-          curl -fsSL https://ollama.com/install.sh | sh
           ollama serve &
           echo "Waiting for Ollama..."
           until curl -s http://localhost:11434/api/tags > /dev/null; do sleep 1; done
