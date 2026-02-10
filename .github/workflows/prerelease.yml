@@ -73,6 +73,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: review
     if: ${{ needs.review.outputs.smallest_missing_pr != '' }}
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v5
       - name: Get PR info
@@ -102,19 +105,8 @@ jobs:
           WHATS_NEW_PATH="${LATEST_DOCS_VERSION_DIR}getting_started/whats_new.md"
           MIGRATION_GUIDE_PATH="${LATEST_DOCS_VERSION_DIR}getting_started/migration_guide.md"
 
-          WHATS_NEW_CONTENT=$(cat "$WHATS_NEW_PATH")
-          MIGRATION_GUIDE_CONTENT=$(cat "$MIGRATION_GUIDE_PATH")
-
           echo "WHATS_NEW_PATH=$WHATS_NEW_PATH" >> "$GITHUB_ENV"
           echo "MIGRATION_GUIDE_PATH=$MIGRATION_GUIDE_PATH" >> "$GITHUB_ENV"
-
-          echo "WHATS_NEW_MD_CONTENT<<EOF" >> "$GITHUB_ENV"
-          echo "$WHATS_NEW_CONTENT" >> "$GITHUB_ENV"
-          echo "EOF" >> "$GITHUB_ENV"
-
-          echo "MIGRATION_GUIDE_MD_CONTENT<<EOF" >> "$GITHUB_ENV"
-          echo "$MIGRATION_GUIDE_CONTENT" >> "$GITHUB_ENV"
-          echo "EOF" >> "$GITHUB_ENV"
 
       - name: Install & Setup Ollama
         run: |
@@ -162,17 +154,9 @@ jobs:
             ${{ env.PR_DIFF_OUTPUT }}
             ```
 
-            Here is the current content of '${{ env.WHATS_NEW_PATH }}':
-            ```
-            ${{ env.WHATS_NEW_MD_CONTENT }}
-            ```
+            Please read the files at '${{ env.WHATS_NEW_PATH }}' and '${{ env.MIGRATION_GUIDE_PATH }}' to understand the current state of the documentation.
 
-            Here is the current content of '${{ env.MIGRATION_GUIDE_PATH }}':
-            ```
-            ${{ env.MIGRATION_GUIDE_MD_CONTENT }}
-            ```
-
-            Please update either '${{ env.WHATS_NEW_PATH }}' or '${{ env.MIGRATION_GUIDE_PATH }}' (choose the most appropriate one) to include the information from the PR.
+            Update either '${{ env.WHATS_NEW_PATH }}' or '${{ env.MIGRATION_GUIDE_PATH }}' (choose the most appropriate one) to include the information from the PR.
             Add the new content directly to the file.
             Ensure you include a comment referencing the PR number, like: "<!-- PR #${{ needs.review.outputs.smallest_missing_pr }} -->".
 
