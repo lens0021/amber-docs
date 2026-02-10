@@ -145,6 +145,7 @@ jobs:
         id: explanation
         with:
           model: ollama/gpt-oss
+          use_github_token: true
           prompt: |
             The following Pull Request (PR) information is available:
             PR View Output:
