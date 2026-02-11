@@ -86,15 +86,9 @@ jobs:
           PR_NUMBER: ${{ needs.review.outputs.smallest_missing_pr }}
         run: |
           echo "Attempting to get info for PR #$PR_NUMBER from amber-lang/amber"
-          PR_VIEW_OUTPUT=$(gh pr view "$PR_NUMBER" --repo amber-lang/amber)
-          echo "PR_VIEW_OUTPUT<<EOF" >> "$GITHUB_ENV"
-          echo "$PR_VIEW_OUTPUT" >> "$GITHUB_ENV"
-          echo "EOF" >> "$GITHUB_ENV"
-
-          PR_DIFF_OUTPUT=$(gh pr diff "$PR_NUMBER" --repo amber-lang/amber)
-          echo "PR_DIFF_OUTPUT<<EOF" >> "$GITHUB_ENV"
-          echo "$PR_DIFF_OUTPUT" >> "$GITHUB_ENV"
-          echo "EOF" >> "$GITHUB_ENV"
+          mkdir -p .nanocoder
+          gh pr view "$PR_NUMBER" --repo amber-lang/amber > .nanocoder/pr_view_output.txt
+          gh pr diff "$PR_NUMBER" --repo amber-lang/amber > .nanocoder/pr_diff_output.txt
 
       - name: Get latest docs version and content
         id: get-docs-content
@@ -183,20 +177,19 @@ jobs:
       - name: Run nanocoder
         run: nanocoder run "$PROMPT"
         env:
+          NANOCODER_LOG_LEVEL: debug
           PROMPT: |
             The following Pull Request (PR) information is available:
-            PR View Output:
-            ```
-            ${{ env.PR_VIEW_OUTPUT }}
-            ```
-            PR Diff Output:
-            ```
-            ${{ env.PR_DIFF_OUTPUT }}
-            ```
+            PR View Output: .nanocoder/pr_view_output.txt
+            PR Diff Output: .nanocoder/pr_diff_output.txt
 
             You may update any file under '${{ env.LATEST_DOCS_VERSION_DIR }}' as needed to include the information from the PR.
             Add the new content directly to the file(s).
             Ensure you include a comment referencing the PR number, like: "<!-- PR #${{ needs.review.outputs.smallest_missing_pr }} -->".
+
+      - name: Clean nanocoder task state
+        run: |
+          rm -f .nanocoder
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
