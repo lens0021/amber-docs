@@ -86,9 +86,9 @@ jobs:
           PR_NUMBER: ${{ needs.review.outputs.smallest_missing_pr }}
         run: |
           echo "Attempting to get info for PR #$PR_NUMBER from amber-lang/amber"
-          mkdir -p .nanocoder
-          gh pr view "$PR_NUMBER" --repo amber-lang/amber > .nanocoder/pr_view_output.txt
-          gh pr diff "$PR_NUMBER" --repo amber-lang/amber > .nanocoder/pr_diff_output.txt
+          mkdir -p "${{ env.NANOCODER_WORKDIR }}/.nanocoder"
+          gh pr view "$PR_NUMBER" --repo amber-lang/amber > "${{ env.NANOCODER_WORKDIR }}/.nanocoder/pr_view_output.txt"
+          gh pr diff "$PR_NUMBER" --repo amber-lang/amber > "${{ env.NANOCODER_WORKDIR }}/.nanocoder/pr_diff_output.txt"
 
       - name: Get latest docs version and content
         id: get-docs-content
@@ -96,6 +96,7 @@ jobs:
           LATEST_DOCS_VERSION_DIR=$(ls -d docs/*/ | sort -V | tail -n 1)
           echo "Latest docs version directory: $LATEST_DOCS_VERSION_DIR"
           echo "LATEST_DOCS_VERSION_DIR=$LATEST_DOCS_VERSION_DIR" >> "$GITHUB_ENV"
+          echo "NANOCODER_WORKDIR=$LATEST_DOCS_VERSION_DIR" >> "$GITHUB_ENV"
 
       - name: Get ollama version
         id: version-ollama
@@ -176,6 +177,7 @@ jobs:
 
       - name: Run nanocoder
         run: nanocoder run "$PROMPT"
+        working-directory: ${{ env.NANOCODER_WORKDIR }}
         env:
           NANOCODER_LOG_LEVEL: debug
           PROMPT: |
@@ -189,7 +191,8 @@ jobs:
 
       - name: Clean nanocoder task state
         run: |
-          rm -f .nanocoder
+          rm -rf "${{ env.NANOCODER_WORKDIR }}/.nanocoder"
+          git checkout -- .github
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
