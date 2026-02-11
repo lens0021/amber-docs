@@ -175,8 +175,10 @@ jobs:
           until curl -s http://localhost:11434/api/tags > /dev/null; do sleep 1; done
 
       - name: Pull gpt-oss
-        if: steps.cache-ollama-models.outputs.cache-hit != 'true'
-        run: ollama pull gpt-oss
+        run: |
+          if ! ollama list | awk '{print $1}' | grep -qx "gpt-oss"; then
+            ollama pull gpt-oss
+          fi
 
       - name: Run nanocoder
         run: nanocoder run "$PROMPT"
