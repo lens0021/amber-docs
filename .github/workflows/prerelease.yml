@@ -169,7 +169,7 @@ jobs:
         run: ollama pull gpt-oss
 
       - name: Run nanocoder
-        run: nanocoder run "$PROMPT"
+        run: script -q -e -c 'bash -lc "nanocoder run \"$PROMPT\""' /dev/null
         env:
           PROMPT: |
             The following Pull Request (PR) information is available:
