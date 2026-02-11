@@ -134,7 +134,7 @@ jobs:
         run: curl -fsSL https://opencode.ai/install | bash
 
       - name: Add opencode to PATH
-        run: echo "$HOME/.opencode/bin" >> $GITHUB_PATH      - uses: anomalyco/opencode/github@latest
+        run: echo "$HOME/.opencode/bin" >> $GITHUB_PATH
 
       - name: Configure OpenCode
         run: |
