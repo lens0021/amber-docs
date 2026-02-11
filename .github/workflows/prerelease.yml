@@ -80,6 +80,13 @@ jobs:
       - name: Set OLLAMA_MODELS
         run: echo "OLLAMA_MODELS=${{ runner.temp }}/ollama/models" >> $GITHUB_ENV
       - uses: actions/checkout@v5
+      - name: Get latest docs version and content
+        id: get-docs-content
+        run: |
+          LATEST_DOCS_VERSION_DIR=$(ls -d docs/*/ | sort -V | tail -n 1)
+          echo "Latest docs version directory: $LATEST_DOCS_VERSION_DIR"
+          echo "LATEST_DOCS_VERSION_DIR=$LATEST_DOCS_VERSION_DIR" >> "$GITHUB_ENV"
+          echo "NANOCODER_WORKDIR=$LATEST_DOCS_VERSION_DIR" >> "$GITHUB_ENV"
       - name: Get PR info
         env:
           GH_TOKEN: ${{ github.token }}
@@ -89,14 +96,6 @@ jobs:
           mkdir -p "${{ env.NANOCODER_WORKDIR }}/.nanocoder"
           gh pr view "$PR_NUMBER" --repo amber-lang/amber > "${{ env.NANOCODER_WORKDIR }}/.nanocoder/pr_view_output.txt"
           gh pr diff "$PR_NUMBER" --repo amber-lang/amber > "${{ env.NANOCODER_WORKDIR }}/.nanocoder/pr_diff_output.txt"
-
-      - name: Get latest docs version and content
-        id: get-docs-content
-        run: |
-          LATEST_DOCS_VERSION_DIR=$(ls -d docs/*/ | sort -V | tail -n 1)
-          echo "Latest docs version directory: $LATEST_DOCS_VERSION_DIR"
-          echo "LATEST_DOCS_VERSION_DIR=$LATEST_DOCS_VERSION_DIR" >> "$GITHUB_ENV"
-          echo "NANOCODER_WORKDIR=$LATEST_DOCS_VERSION_DIR" >> "$GITHUB_ENV"
 
       - name: Get ollama version
         id: version-ollama
