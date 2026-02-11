@@ -170,7 +170,14 @@ jobs:
         run: ollama pull gpt-oss
 
       - name: Run nanocoder
-        run: script -q -e -c 'bash -lc "nanocoder run \"$PROMPT\""' /dev/null
+        run: |
+          cat <<'PY' > /tmp/run_nanocoder.py
+          import os
+          import subprocess
+
+          subprocess.run(["nanocoder", "run", os.environ["PROMPT"]], check=True)
+          PY
+          script -q -e -c 'python /tmp/run_nanocoder.py' /dev/null
         env:
           PROMPT: |
             The following Pull Request (PR) information is available:
