@@ -108,15 +108,33 @@ jobs:
           echo "WHATS_NEW_PATH=$WHATS_NEW_PATH" >> "$GITHUB_ENV"
           echo "MIGRATION_GUIDE_PATH=$MIGRATION_GUIDE_PATH" >> "$GITHUB_ENV"
 
-      - name: Install & Setup Ollama
-        uses: ai-action/setup-ollama@v2
+      - name: Cache ollama
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/ollama
+          key: ollama-${{ runner.os }}-${{ runner.arch }}-TODO-VERSION
 
-      - name: Start Ollama server and pull model
-        run: |
-          ollama serve &
-          echo "Waiting for Ollama..."
-          until curl -s http://localhost:11434/api/tags > /dev/null; do sleep 1; done
-          ollama pull gpt-oss
+      - name: Install ollama
+          curl -fsSL https://ollama.com/install.sh | sh
+
+      - name: Install opencode
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: curl -fsSL https://opencode.ai/install | bash
+
+      - name: Cache opencode
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.opencode/bin
+          key: opencode-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.version }}
+
+      - name: Install opencode
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: curl -fsSL https://opencode.ai/install | bash
+
+      - name: Add opencode to PATH
+        run: echo "$HOME/.opencode/bin" >> $GITHUB_PATH      - uses: anomalyco/opencode/github@latest
 
       - name: Configure OpenCode
         run: |
@@ -141,12 +159,15 @@ jobs:
           }
           EOF
 
-      - uses: anomalyco/opencode/github@latest
-        id: explanation
-        with:
-          model: ollama/gpt-oss
-          use_github_token: true
-          prompt: |
+      - run: |
+          ollama serve &
+          echo "Waiting for Ollama..."
+          until curl -s http://localhost:11434/api/tags > /dev/null; do sleep 1; done
+          ollama pull gpt-oss
+          opencode run
+        env:
+          MODEL: ollama/gpt-oss
+          PROMPT: |
             The following Pull Request (PR) information is available:
             PR View Output:
             ```
