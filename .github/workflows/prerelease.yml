@@ -76,6 +76,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    env:
+      OLLAMA_MODELS: ${{ runner.temp }}/ollama/models
     steps:
       - uses: actions/checkout@v5
       - name: Get PR info
@@ -89,12 +91,10 @@ jobs:
           echo "$PR_VIEW_OUTPUT" >> "$GITHUB_ENV"
           echo "EOF" >> "$GITHUB_ENV"
 
-          echo "--- PR Diff ---"
           PR_DIFF_OUTPUT=$(gh pr diff "$PR_NUMBER" --repo amber-lang/amber)
           echo "PR_DIFF_OUTPUT<<EOF" >> "$GITHUB_ENV"
           echo "$PR_DIFF_OUTPUT" >> "$GITHUB_ENV"
           echo "EOF" >> "$GITHUB_ENV"
-          echo "--- End of PR Diff ---"
 
       - name: Get latest docs version and content
         id: get-docs-content
@@ -125,6 +125,19 @@ jobs:
       - name: Install ollama
         if: steps.cache-ollama.outputs.cache-hit != 'true'
         run: curl -fsSL https://ollama.com/install.sh | sh
+
+      - name: Prepare Ollama models dir
+        run: mkdir -p "$OLLAMA_MODELS"
+
+      - name: Cache ollama models
+        id: cache-ollama-models
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.OLLAMA_MODELS }}
+          key: ollama-models-${{ runner.os }}-${{ runner.arch }}-${{ steps.version-ollama.outputs.version }}-gpt-oss
+          restore-keys: |
+            ollama-models-${{ runner.os }}-${{ runner.arch }}-${{ steps.version-ollama.outputs.version }}-
+            ollama-models-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Get opencode version
         id: version-opencode
@@ -182,7 +195,9 @@ jobs:
           ollama serve &
           echo "Waiting for Ollama..."
           until curl -s http://localhost:11434/api/tags > /dev/null; do sleep 1; done
-          ollama pull gpt-oss
+          if [ "${{ steps.cache-ollama-models.outputs.cache-hit }}" != "true" ]; then
+            ollama pull gpt-oss
+          fi
           printf "%s" "$PROMPT" | opencode run --model "$MODEL"
         env:
           MODEL: ollama/gpt-oss
