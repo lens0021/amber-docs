@@ -144,7 +144,8 @@ jobs:
 
       - name: Configure nanocoder
         run: |
-          cat <<'EOF' > agents.config.json
+          mkdir -p ~/.config/nanocoder
+          cat <<'EOF' > ~/.config/nanocoder/agents.config.json
           {
             "nanocoder": {
               "providers": [
