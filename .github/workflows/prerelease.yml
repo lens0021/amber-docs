@@ -101,12 +101,7 @@ jobs:
         run: |
           LATEST_DOCS_VERSION_DIR=$(ls -d docs/*/ | sort -V | tail -n 1)
           echo "Latest docs version directory: $LATEST_DOCS_VERSION_DIR"
-
-          WHATS_NEW_PATH="${LATEST_DOCS_VERSION_DIR}getting_started/whats_new.md"
-          MIGRATION_GUIDE_PATH="${LATEST_DOCS_VERSION_DIR}getting_started/migration_guide.md"
-
-          echo "WHATS_NEW_PATH=$WHATS_NEW_PATH" >> "$GITHUB_ENV"
-          echo "MIGRATION_GUIDE_PATH=$MIGRATION_GUIDE_PATH" >> "$GITHUB_ENV"
+          echo "LATEST_DOCS_VERSION_DIR=$LATEST_DOCS_VERSION_DIR" >> "$GITHUB_ENV"
 
       - name: Get ollama version
         id: version-ollama
@@ -202,7 +197,7 @@ jobs:
         run: ollama pull gpt-oss
 
       - name: Run OpenCode
-        run: printf "%s" "$PROMPT" | opencode run --model "$MODEL"
+        run: printf "%s" "$PROMPT" | opencode run --model "$MODEL" --format json --print-logs --log-level DEBUG
         env:
           MODEL: ollama/gpt-oss
           PROMPT: |
@@ -216,10 +211,8 @@ jobs:
             ${{ env.PR_DIFF_OUTPUT }}
             ```
 
-            Please read the files at '${{ env.WHATS_NEW_PATH }}' and '${{ env.MIGRATION_GUIDE_PATH }}' to understand the current state of the documentation.
-
-            Update either '${{ env.WHATS_NEW_PATH }}' or '${{ env.MIGRATION_GUIDE_PATH }}' (choose the most appropriate one) to include the information from the PR.
-            Add the new content directly to the file.
+            You may update any file under '${{ env.LATEST_DOCS_VERSION_DIR }}' as needed to include the information from the PR.
+            Add the new content directly to the file(s).
             Ensure you include a comment referencing the PR number, like: "<!-- PR #${{ needs.review.outputs.smallest_missing_pr }} -->".
 
       - name: Create Pull Request
