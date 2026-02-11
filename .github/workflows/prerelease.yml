@@ -134,54 +134,26 @@ jobs:
             ollama-models-${{ runner.os }}-${{ runner.arch }}-${{ steps.version-ollama.outputs.version }}-
             ollama-models-${{ runner.os }}-${{ runner.arch }}-
 
-      - name: Get opencode version
-        id: version-opencode
-        shell: bash
-        run: |
-          VERSION=$(curl -sf https://api.github.com/repos/anomalyco/opencode/releases/latest | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
-          echo "version=${VERSION:-latest}" >> $GITHUB_OUTPUT
-
-      - name: Cache opencode
-        id: cache-opencode
-        uses: actions/cache@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          path: ~/.opencode/bin
-          key: opencode-${{ runner.os }}-${{ runner.arch }}-${{ steps.version-opencode.outputs.version }}
+          node-version: 20
 
-      - name: Install opencode
-        if: steps.cache-opencode.outputs.cache-hit != 'true'
-        run: curl -fsSL https://opencode.ai/install | bash
+      - name: Install nanocoder
+        run: npm install -g @nanocollective/nanocoder
 
-      - name: Add opencode to PATH
-        run: echo "$HOME/.opencode/bin" >> $GITHUB_PATH
-
-      - name: Configure OpenCode
+      - name: Configure nanocoder
         run: |
-          mkdir -p ~/.config/opencode
-          cat <<EOF > ~/.config/opencode/opencode.json
+          cat <<'EOF' > agents.config.json
           {
-            "\$schema": "https://opencode.ai/config.json",
-            "model": "ollama/gpt-oss",
-            "agent": {
-              "build": {
-                "permission": {
-                  "*": "allow"
+            "nanocoder": {
+              "providers": [
+                {
+                  "name": "Ollama",
+                  "baseUrl": "http://localhost:11434/v1",
+                  "models": ["gpt-oss"]
                 }
-              }
-            },
-            "provider": {
-              "ollama": {
-                "npm": "@ai-sdk/openai-compatible",
-                "name": "Ollama",
-                "options": {
-                  "baseURL": "http://localhost:11434/v1"
-                },
-                "models": {
-                  "gpt-oss": {
-                    "name": "gpt-oss"
-                  }
-                }
-              }
+              ]
             }
           }
           EOF
@@ -196,10 +168,9 @@ jobs:
         if: steps.cache-ollama-models.outputs.cache-hit != 'true'
         run: ollama pull gpt-oss
 
-      - name: Run OpenCode
-        run: printf "%s" "$PROMPT" | opencode run --model "$MODEL" --format json --print-logs --log-level DEBUG
+      - name: Run nanocoder
+        run: nanocoder run "$PROMPT"
         env:
-          MODEL: ollama/gpt-oss
           PROMPT: |
             The following Pull Request (PR) information is available:
             PR View Output:
