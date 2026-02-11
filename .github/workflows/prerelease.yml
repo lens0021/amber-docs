@@ -80,7 +80,6 @@ jobs:
       - uses: actions/checkout@v5
       - name: Get PR info
         env:
-          GH_TOKEN: ${{ secrets.AMBER_GITHUB_TOKEN }}
           PR_NUMBER: ${{ needs.review.outputs.smallest_missing_pr }}
         run: |
           echo "Attempting to get info for PR #$PR_NUMBER from amber-lang/amber"
@@ -108,29 +107,40 @@ jobs:
           echo "WHATS_NEW_PATH=$WHATS_NEW_PATH" >> "$GITHUB_ENV"
           echo "MIGRATION_GUIDE_PATH=$MIGRATION_GUIDE_PATH" >> "$GITHUB_ENV"
 
+      - name: Get ollama version
+        id: version-ollama
+        shell: bash
+        run: |
+          VERSION=$(curl -sf https://api.github.com/repos/ollama/ollama/releases/latest | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
+          echo "version=${VERSION:-latest}" >> $GITHUB_OUTPUT
+
       - name: Cache ollama
-        id: cache
+        id: cache-ollama
         uses: actions/cache@v4
         with:
           path: /usr/local/ollama
-          key: ollama-${{ runner.os }}-${{ runner.arch }}-TODO-VERSION
+          key: ollama-${{ runner.os }}-${{ runner.arch }}-${{ steps.version-ollama.outputs.version }}
 
       - name: Install ollama
-          curl -fsSL https://ollama.com/install.sh | sh
+        if: steps.cache-ollama.outputs.cache-hit != 'true'
+        run: curl -fsSL https://ollama.com/install.sh | sh
 
-      - name: Install opencode
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: curl -fsSL https://opencode.ai/install | bash
+      - name: Get opencode version
+        id: version-opencode
+        shell: bash
+        run: |
+          VERSION=$(curl -sf https://api.github.com/repos/anomalyco/opencode/releases/latest | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
+          echo "version=${VERSION:-latest}" >> $GITHUB_OUTPUT
 
       - name: Cache opencode
-        id: cache
+        id: cache-opencode
         uses: actions/cache@v4
         with:
           path: ~/.opencode/bin
-          key: opencode-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.version }}
+          key: opencode-${{ runner.os }}-${{ runner.arch }}-${{ steps.version-opencode.outputs.version }}
 
       - name: Install opencode
-        if: steps.cache.outputs.cache-hit != 'true'
+        if: steps.cache-opencode.outputs.cache-hit != 'true'
         run: curl -fsSL https://opencode.ai/install | bash
 
       - name: Add opencode to PATH
@@ -142,6 +152,14 @@ jobs:
           cat <<EOF > ~/.config/opencode/opencode.json
           {
             "\$schema": "https://opencode.ai/config.json",
+            "model": "ollama/gpt-oss",
+            "agent": {
+              "build": {
+                "permission": {
+                  "*": "allow"
+                }
+              }
+            },
             "provider": {
               "ollama": {
                 "npm": "@ai-sdk/openai-compatible",
@@ -164,7 +182,7 @@ jobs:
           echo "Waiting for Ollama..."
           until curl -s http://localhost:11434/api/tags > /dev/null; do sleep 1; done
           ollama pull gpt-oss
-          opencode run
+          printf "%s" "$PROMPT" | opencode run --model "$MODEL"
         env:
           MODEL: ollama/gpt-oss
           PROMPT: |
@@ -183,8 +201,6 @@ jobs:
             Update either '${{ env.WHATS_NEW_PATH }}' or '${{ env.MIGRATION_GUIDE_PATH }}' (choose the most appropriate one) to include the information from the PR.
             Add the new content directly to the file.
             Ensure you include a comment referencing the PR number, like: "<!-- PR #${{ needs.review.outputs.smallest_missing_pr }} -->".
-        env:
-          GITHUB_TOKEN: ${{ secrets.AMBER_GITHUB_TOKEN }}
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
