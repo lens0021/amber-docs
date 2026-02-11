@@ -175,7 +175,16 @@ jobs:
           fi
 
       - name: Run nanocoder
-        run: nanocoder run "$PROMPT"
+        run: |
+          if ! nanocoder run "$PROMPT"; then
+            echo "nanocoder failed without TTY; retrying with pseudo-TTY for logs..."
+            script -q -e -c 'nanocoder run "$PROMPT"' /dev/null
+            exit 1
+          fi
+          if git -C "$GITHUB_WORKSPACE" diff --quiet -- "$NANOCODER_WORKDIR"; then
+            echo "nanocoder did not produce changes under $NANOCODER_WORKDIR"
+            exit 1
+          fi
         working-directory: ${{ env.NANOCODER_WORKDIR }}
         env:
           NANOCODER_LOG_LEVEL: debug
