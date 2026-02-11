@@ -80,6 +80,7 @@ jobs:
       - uses: actions/checkout@v5
       - name: Get PR info
         env:
+          GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ needs.review.outputs.smallest_missing_pr }}
         run: |
           echo "Attempting to get info for PR #$PR_NUMBER from amber-lang/amber"
