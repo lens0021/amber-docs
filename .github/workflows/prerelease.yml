@@ -165,9 +165,19 @@ jobs:
           fi
       - name: Run nanocoder
         run: |
-          if ! nanocoder run "$PROMPT"; then
+          LOG_PATH="$NANOCODER_WORKDIR/.nanocoder/nanocoder.log"
+          TTY_LOG_PATH="$NANOCODER_WORKDIR/.nanocoder/nanocoder-tty.log"
+          set +e
+          nanocoder run "$PROMPT" 2>&1 | tee "$LOG_PATH"
+          NANO_EXIT=${PIPESTATUS[0]}
+          set -e
+          if [ "$NANO_EXIT" -ne 0 ] || grep -q "Raw mode is not supported" "$LOG_PATH"; then
             echo "nanocoder failed without TTY; retrying with pseudo-TTY for logs..."
-            script -q -e -c 'nanocoder run "$PROMPT"' /dev/null
+            script -q -e -c 'nanocoder run "$PROMPT"' /dev/null 2>&1 | tee "$TTY_LOG_PATH"
+            echo "nanocoder logs (no TTY):"
+            tail -n 200 "$LOG_PATH" || true
+            echo "nanocoder logs (pseudo-TTY):"
+            tail -n 200 "$TTY_LOG_PATH" || true
             exit 1
           fi
           if git -C "$GITHUB_WORKSPACE" diff --quiet -- "$NANOCODER_WORKDIR"; then
