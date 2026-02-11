@@ -76,9 +76,9 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    env:
-      OLLAMA_MODELS: ${{ runner.temp }}/ollama/models
     steps:
+      - name: Set OLLAMA_MODELS
+        run: echo "OLLAMA_MODELS=${{ runner.temp }}/ollama/models" >> $GITHUB_ENV
       - uses: actions/checkout@v5
       - name: Get PR info
         env:
