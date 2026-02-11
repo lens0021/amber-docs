@@ -96,28 +96,23 @@ jobs:
           mkdir -p "${{ env.NANOCODER_WORKDIR }}/.nanocoder"
           gh pr view "$PR_NUMBER" --repo amber-lang/amber > "${{ env.NANOCODER_WORKDIR }}/.nanocoder/pr_view_output.txt"
           gh pr diff "$PR_NUMBER" --repo amber-lang/amber > "${{ env.NANOCODER_WORKDIR }}/.nanocoder/pr_diff_output.txt"
-
       - name: Get ollama version
         id: version-ollama
         shell: bash
         run: |
           VERSION=$(curl -sf https://api.github.com/repos/ollama/ollama/releases/latest | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
           echo "version=${VERSION:-latest}" >> $GITHUB_OUTPUT
-
       - name: Cache ollama
         id: cache-ollama
         uses: actions/cache@v4
         with:
           path: /usr/local/ollama
           key: ollama-${{ runner.os }}-${{ runner.arch }}-${{ steps.version-ollama.outputs.version }}
-
       - name: Install ollama
         if: steps.cache-ollama.outputs.cache-hit != 'true'
         run: curl -fsSL https://ollama.com/install.sh | sh
-
       - name: Prepare Ollama models dir
         run: mkdir -p "$OLLAMA_MODELS"
-
       - name: Cache ollama models
         id: cache-ollama-models
         uses: actions/cache@v4
@@ -127,16 +122,13 @@ jobs:
           restore-keys: |
             ollama-models-${{ runner.os }}-${{ runner.arch }}-${{ steps.version-ollama.outputs.version }}-
             ollama-models-${{ runner.os }}-${{ runner.arch }}-
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-
       - name: Install nanocoder
         run: npm install -g @nanocollective/nanocoder
-
       - name: Configure nanocoder
         run: |
           mkdir -p ~/.config/nanocoder
@@ -161,19 +153,16 @@ jobs:
             "trustedDirectories": ["$GITHUB_WORKSPACE"]
           }
           EOF
-
       - name: Start Ollama
         run: |
           ollama serve &
           echo "Waiting for Ollama..."
           until curl -s http://localhost:11434/api/tags > /dev/null; do sleep 1; done
-
       - name: Pull gpt-oss
         run: |
           if ! ollama list | awk '{print $1}' | grep -qx "gpt-oss"; then
             ollama pull gpt-oss
           fi
-
       - name: Run nanocoder
         run: |
           if ! nanocoder run "$PROMPT"; then
@@ -196,12 +185,10 @@ jobs:
             You may update any file under '${{ env.LATEST_DOCS_VERSION_DIR }}' as needed to include the information from the PR.
             Add the new content directly to the file(s).
             Ensure you include a comment referencing the PR number, like: "<!-- PR #${{ needs.review.outputs.smallest_missing_pr }} -->".
-
       - name: Clean nanocoder task state
         run: |
           rm -rf "${{ env.NANOCODER_WORKDIR }}/.nanocoder"
           git checkout -- .github
-
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
         with:
