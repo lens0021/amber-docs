@@ -131,18 +131,6 @@ jobs:
         run: |
           curl -fsSL https://github.com/block/goose/releases/download/stable/download_cli.sh | CONFIGURE=false bash
           echo "$HOME/.local/bin" >> $GITHUB_PATH
-      - name: Configure goose
-        run: |
-          mkdir -p ~/.config/goose
-          cat <<EOF > ~/.config/goose/profiles.yaml
-          default:
-            provider: ollama
-            processor: ${{ env.MODEL }}
-            accelerator: ${{ env.MODEL }}
-            moderator: passive
-            toolkits:
-              - name: developer
-          EOF
       - name: Start Ollama
         run: |
           ollama serve &
@@ -171,6 +159,8 @@ jobs:
           LOG_PATH=".goose/goose.log"
           set +e
           goose run \
+            --provider ollama \
+            --model ${{ env.MODEL }} \
             -i .goose/instructions.txt \
             --no-session \
             --max-turns 50 \
@@ -190,6 +180,9 @@ jobs:
             exit 1
           fi
         working-directory: ${{ env.NANOCODER_WORKDIR }}
+        env:
+          GOOSE_PROVIDER: ollama
+          OLLAMA_HOST: http://localhost:11434
       - name: Clean goose task state
         run: |
           rm -rf "${{ env.NANOCODER_WORKDIR }}/.goose"
