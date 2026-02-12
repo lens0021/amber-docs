@@ -76,6 +76,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    env:
+      MODEL: qwen2.5-coder:3b
     steps:
       - name: Set OLLAMA_MODELS
         run: echo "OLLAMA_MODELS=${{ runner.temp }}/ollama/models" >> $GITHUB_ENV
@@ -87,6 +89,14 @@ jobs:
           echo "Latest docs version directory: $LATEST_DOCS_VERSION_DIR"
           echo "LATEST_DOCS_VERSION_DIR=$LATEST_DOCS_VERSION_DIR" >> "$GITHUB_ENV"
           echo "NANOCODER_WORKDIR=$LATEST_DOCS_VERSION_DIR" >> "$GITHUB_ENV"
+      - name: Trust workspace for nanocoder
+        run: |
+          mkdir -p ~/.config/nanocoder
+          cat <<EOF > ~/.config/nanocoder/nanocoder-preferences.json
+          {
+            "trustedDirectories": ["$GITHUB_WORKSPACE", "$GITHUB_WORKSPACE/$NANOCODER_WORKDIR"]
+          }
+          EOF
       - name: Get PR info
         env:
           GH_TOKEN: ${{ github.token }}
@@ -118,7 +128,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.OLLAMA_MODELS }}
-          key: ollama-models-${{ runner.os }}-${{ runner.arch }}-${{ steps.version-ollama.outputs.version }}-gpt-oss
+          key: ollama-models-${{ runner.os }}-${{ runner.arch }}-${{ steps.version-ollama.outputs.version }}-${{ env.MODEL }}
           restore-keys: |
             ollama-models-${{ runner.os }}-${{ runner.arch }}-${{ steps.version-ollama.outputs.version }}-
             ollama-models-${{ runner.os }}-${{ runner.arch }}-
@@ -139,18 +149,12 @@ jobs:
                 {
                   "name": "Ollama",
                   "baseUrl": "http://localhost:11434/v1",
-                  "models": ["gpt-oss"]
+                  "models": ["${{ env.MODEL }}"],
+                  "requestTimeout": 600000,
+                  "socketTimeout": 600000
                 }
               ]
             }
-          }
-          EOF
-      - name: Trust workspace for nanocoder
-        run: |
-          mkdir -p ~/.config/nanocoder
-          cat <<EOF > ~/.config/nanocoder/nanocoder-preferences.json
-          {
-            "trustedDirectories": ["$GITHUB_WORKSPACE"]
           }
           EOF
       - name: Start Ollama
@@ -158,10 +162,10 @@ jobs:
           ollama serve &
           echo "Waiting for Ollama..."
           until curl -s http://localhost:11434/api/tags > /dev/null; do sleep 1; done
-      - name: Pull gpt-oss
+      - name: Pull model
         run: |
-          if ! ollama list | awk '{print $1}' | grep -qx "gpt-oss"; then
-            ollama pull gpt-oss
+          if ! ollama list | awk '{print $1}' | grep -qx "${{ env.MODEL }}"; then
+            ollama pull "${{ env.MODEL }}"
           fi
       - name: Run nanocoder
         run: |
