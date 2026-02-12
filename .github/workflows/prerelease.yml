@@ -77,7 +77,7 @@ jobs:
       contents: write
       pull-requests: write
     env:
-      MODEL: qwen2.5-coder:3b
+      MODEL: qwen2.5-coder:7b
     steps:
       - name: Set OLLAMA_MODELS
         run: echo "OLLAMA_MODELS=${{ runner.temp }}/ollama/models" >> $GITHUB_ENV
@@ -147,13 +147,21 @@ jobs:
 
           # Create instruction file
           cat > .goose/instructions.txt <<'INST_EOF'
-          The following Pull Request (PR) information is available:
-          PR View Output: .goose/pr_view_output.txt
-          PR Diff Output: .goose/pr_diff_output.txt
+          Read the Pull Request information from these files:
+          - .goose/pr_view_output.txt (PR description and metadata)
+          - .goose/pr_diff_output.txt (code changes)
 
-          You may update any file under the current working directory as needed to include the information from the PR.
-          Add the new content directly to the file(s).
-          Ensure you include a comment referencing the PR number, like: "<!-- PR #${{ needs.review.outputs.smallest_missing_pr }} -->".
+          Based on the PR content, update the appropriate documentation files to document these changes.
+          Common documentation files include:
+          - getting_started/new_changes.md
+          - getting_started/whats_new.md
+          - getting_started/migration_guide.md
+
+          IMPORTANT:
+          - DO NOT create TODO lists, task files, or planning documents
+          - DIRECTLY modify the documentation markdown files
+          - Add this comment near your changes: <!-- PR #${{ needs.review.outputs.smallest_missing_pr }} -->
+          - Make sure to actually write content to files, not just plan to do it
           INST_EOF
 
           LOG_PATH=".goose/goose.log"
@@ -161,9 +169,11 @@ jobs:
           goose run \
             --provider ollama \
             --model ${{ env.MODEL }} \
+            --with-builtin developer \
             -i .goose/instructions.txt \
             --no-session \
             --max-turns 50 \
+            --debug \
             --output-format text 2>&1 | tee "$LOG_PATH"
           GOOSE_EXIT=${PIPESTATUS[0]}
           set -e
