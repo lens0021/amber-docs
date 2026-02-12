@@ -155,10 +155,10 @@ jobs:
           fi
       - name: Run goose
         run: |
-          mkdir -p "$NANOCODER_WORKDIR/.goose"
+          mkdir -p .goose
 
           # Create instruction file
-          cat > "$NANOCODER_WORKDIR/.goose/instructions.txt" <<'INST_EOF'
+          cat > .goose/instructions.txt <<'INST_EOF'
           The following Pull Request (PR) information is available:
           PR View Output: .goose/pr_view_output.txt
           PR Diff Output: .goose/pr_diff_output.txt
@@ -168,11 +168,10 @@ jobs:
           Ensure you include a comment referencing the PR number, like: "<!-- PR #${{ needs.review.outputs.smallest_missing_pr }} -->".
           INST_EOF
 
-          LOG_PATH="$NANOCODER_WORKDIR/.goose/goose.log"
+          LOG_PATH=".goose/goose.log"
           set +e
           goose run \
-            -w "$NANOCODER_WORKDIR" \
-            -i "$NANOCODER_WORKDIR/.goose/instructions.txt" \
+            -i .goose/instructions.txt \
             --no-session \
             --max-turns 50 \
             --output-format text 2>&1 | tee "$LOG_PATH"
