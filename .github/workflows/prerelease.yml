@@ -165,6 +165,7 @@ jobs:
           fi
       - name: Run nanocoder
         run: |
+          mkdir -p "$NANOCODER_WORKDIR/.nanocoder"
           LOG_PATH="$NANOCODER_WORKDIR/.nanocoder/nanocoder.log"
           TTY_LOG_PATH="$NANOCODER_WORKDIR/.nanocoder/nanocoder-tty.log"
           set +e
