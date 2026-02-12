@@ -89,23 +89,18 @@ jobs:
           echo "Latest docs version directory: $LATEST_DOCS_VERSION_DIR"
           echo "LATEST_DOCS_VERSION_DIR=$LATEST_DOCS_VERSION_DIR" >> "$GITHUB_ENV"
           echo "NANOCODER_WORKDIR=$LATEST_DOCS_VERSION_DIR" >> "$GITHUB_ENV"
-      - name: Trust workspace for nanocoder
+      - name: Prepare goose workspace
         run: |
-          mkdir -p ~/.config/nanocoder
-          cat <<EOF > ~/.config/nanocoder/nanocoder-preferences.json
-          {
-            "trustedDirectories": ["$GITHUB_WORKSPACE", "$GITHUB_WORKSPACE/$NANOCODER_WORKDIR"]
-          }
-          EOF
+          mkdir -p "${{ env.NANOCODER_WORKDIR }}/.goose"
       - name: Get PR info
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ needs.review.outputs.smallest_missing_pr }}
         run: |
           echo "Attempting to get info for PR #$PR_NUMBER from amber-lang/amber"
-          mkdir -p "${{ env.NANOCODER_WORKDIR }}/.nanocoder"
-          gh pr view "$PR_NUMBER" --repo amber-lang/amber > "${{ env.NANOCODER_WORKDIR }}/.nanocoder/pr_view_output.txt"
-          gh pr diff "$PR_NUMBER" --repo amber-lang/amber > "${{ env.NANOCODER_WORKDIR }}/.nanocoder/pr_diff_output.txt"
+          mkdir -p "${{ env.NANOCODER_WORKDIR }}/.goose"
+          gh pr view "$PR_NUMBER" --repo amber-lang/amber > "${{ env.NANOCODER_WORKDIR }}/.goose/pr_view_output.txt"
+          gh pr diff "$PR_NUMBER" --repo amber-lang/amber > "${{ env.NANOCODER_WORKDIR }}/.goose/pr_diff_output.txt"
       - name: Get ollama version
         id: version-ollama
         shell: bash
@@ -132,30 +127,21 @@ jobs:
           restore-keys: |
             ollama-models-${{ runner.os }}-${{ runner.arch }}-${{ steps.version-ollama.outputs.version }}-
             ollama-models-${{ runner.os }}-${{ runner.arch }}-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - name: Install nanocoder
-        run: npm install -g @nanocollective/nanocoder
-      - name: Configure nanocoder
+      - name: Install goose
         run: |
-          mkdir -p ~/.config/nanocoder
-          cat <<'EOF' > ~/.config/nanocoder/agents.config.json
-          {
-            "nanocoder": {
-              "providers": [
-                {
-                  "name": "Ollama",
-                  "baseUrl": "http://localhost:11434/v1",
-                  "models": ["${{ env.MODEL }}"],
-                  "requestTimeout": 600000,
-                  "socketTimeout": 600000
-                }
-              ]
-            }
-          }
+          curl -fsSL https://github.com/block/goose/releases/latest/download/goose-linux-x86_64 -o /usr/local/bin/goose
+          chmod +x /usr/local/bin/goose
+      - name: Configure goose
+        run: |
+          mkdir -p ~/.config/goose
+          cat <<EOF > ~/.config/goose/profiles.yaml
+          default:
+            provider: ollama
+            processor: ${{ env.MODEL }}
+            accelerator: ${{ env.MODEL }}
+            moderator: passive
+            toolkits:
+              - name: developer
           EOF
       - name: Start Ollama
         run: |
@@ -167,43 +153,48 @@ jobs:
           if ! ollama list | awk '{print $1}' | grep -qx "${{ env.MODEL }}"; then
             ollama pull "${{ env.MODEL }}"
           fi
-      - name: Run nanocoder
+      - name: Run goose
         run: |
-          mkdir -p "$NANOCODER_WORKDIR/.nanocoder"
-          LOG_PATH="$NANOCODER_WORKDIR/.nanocoder/nanocoder.log"
-          TTY_LOG_PATH="$NANOCODER_WORKDIR/.nanocoder/nanocoder-tty.log"
+          mkdir -p "$NANOCODER_WORKDIR/.goose"
+
+          # Create instruction file
+          cat > "$NANOCODER_WORKDIR/.goose/instructions.txt" <<'INST_EOF'
+          The following Pull Request (PR) information is available:
+          PR View Output: .goose/pr_view_output.txt
+          PR Diff Output: .goose/pr_diff_output.txt
+
+          You may update any file under the current working directory as needed to include the information from the PR.
+          Add the new content directly to the file(s).
+          Ensure you include a comment referencing the PR number, like: "<!-- PR #${{ needs.review.outputs.smallest_missing_pr }} -->".
+          INST_EOF
+
+          LOG_PATH="$NANOCODER_WORKDIR/.goose/goose.log"
           set +e
-          nanocoder run "$PROMPT" 2>&1 | tee "$LOG_PATH"
-          NANO_EXIT=${PIPESTATUS[0]}
+          goose run \
+            -w "$NANOCODER_WORKDIR" \
+            -i "$NANOCODER_WORKDIR/.goose/instructions.txt" \
+            --no-session \
+            --max-turns 50 \
+            --output-format text 2>&1 | tee "$LOG_PATH"
+          GOOSE_EXIT=${PIPESTATUS[0]}
           set -e
-          if [ "$NANO_EXIT" -ne 0 ] || grep -q "Raw mode is not supported" "$LOG_PATH"; then
-            echo "nanocoder failed without TTY; retrying with pseudo-TTY for logs..."
-            script -q -e -c 'nanocoder run "$PROMPT"' /dev/null 2>&1 | tee "$TTY_LOG_PATH"
-            echo "nanocoder logs (no TTY):"
+
+          if [ "$GOOSE_EXIT" -ne 0 ]; then
+            echo "goose failed with exit code $GOOSE_EXIT"
+            echo "goose logs:"
             tail -n 200 "$LOG_PATH" || true
-            echo "nanocoder logs (pseudo-TTY):"
-            tail -n 200 "$TTY_LOG_PATH" || true
             exit 1
           fi
+
           if git -C "$GITHUB_WORKSPACE" diff --quiet -- "$NANOCODER_WORKDIR"; then
-            echo "nanocoder did not produce changes under $NANOCODER_WORKDIR"
+            echo "goose did not produce changes under $NANOCODER_WORKDIR"
             exit 1
           fi
         working-directory: ${{ env.NANOCODER_WORKDIR }}
-        env:
-          NANOCODER_LOG_LEVEL: debug
-          PROMPT: |
-            The following Pull Request (PR) information is available:
-            PR View Output: .nanocoder/pr_view_output.txt
-            PR Diff Output: .nanocoder/pr_diff_output.txt
-
-            You may update any file under '${{ env.LATEST_DOCS_VERSION_DIR }}' as needed to include the information from the PR.
-            Add the new content directly to the file(s).
-            Ensure you include a comment referencing the PR number, like: "<!-- PR #${{ needs.review.outputs.smallest_missing_pr }} -->".
-      - name: Clean nanocoder task state
+      - name: Clean goose task state
         run: |
-          rm -rf "${{ env.NANOCODER_WORKDIR }}/.nanocoder"
-          git checkout -- .github
+          rm -rf "${{ env.NANOCODER_WORKDIR }}/.goose"
+          git checkout -- .github 2>/dev/null || true
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
         with:
