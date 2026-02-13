@@ -120,7 +120,7 @@ jobs:
           echo "PR_BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
 
           # Pre-compute diff info for goose instructions
-          git -C amber-repo diff --name-status "$BASE_SHA..$HEAD_SHA" > "${{ env.DOCS_WORKDIR }}/.goose/diff_names.txt"
+          gh pr diff "$PR_NUMBER" --repo amber-lang/amber --name-only > "${{ env.DOCS_WORKDIR }}/.goose/diff_names.txt"
 
           # List available docs files
           find "${{ env.DOCS_WORKDIR }}" -name '*.md' -not -path '*/.goose/*' | \
@@ -300,7 +300,7 @@ jobs:
 
           Task: $CHANGE_POINT
           Add <!-- PR #${{ needs.review.outputs.smallest_missing_pr }} --> near your changes.
-          To see code changes: git -C ../../amber-repo diff $PR_BASE_SHA..$PR_HEAD_SHA -- path/to/file
+          To see code changes: gh pr diff ${{ needs.review.outputs.smallest_missing_pr }} --repo amber-lang/amber
           Edit $TARGET_FILE using text_editor. Do not edit other files.
           If no change is needed, print: NO_CHANGE
           INST_EOF
