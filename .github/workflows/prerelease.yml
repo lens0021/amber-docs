@@ -191,13 +191,11 @@ jobs:
           Docs files available:
           $DOCS_FILES
 
-          Which docs files above need updating for this PR? Output exactly:
+          This PR must be documented. Which docs files above need updating? Output exactly:
           BEGIN_PLAN
           FILE: <path from docs files list>
           - <what to change>
           END_PLAN
-
-          If none need updating, output BEGIN_PLAN and END_PLAN with nothing between.
           INST_EOF
 
           DISCOVER_LOG=".goose/discover.log"
