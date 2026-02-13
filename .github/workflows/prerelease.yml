@@ -180,9 +180,10 @@ jobs:
 
           Step 2: Review code changes from the PR
           - Use shell tool to run git commands in the amber repository:
-            * git -C ../amber-repo diff $PR_BASE_SHA..$PR_HEAD_SHA
-            * git -C ../amber-repo log --oneline $PR_BASE_SHA..$PR_HEAD_SHA
-            * git -C ../amber-repo show $PR_HEAD_SHA
+            * git -C ../amber-repo diff --name-status $PR_BASE_SHA..$PR_HEAD_SHA  (list changed files)
+            * git -C ../amber-repo log --oneline $PR_BASE_SHA..$PR_HEAD_SHA  (commit messages)
+            * git -C ../amber-repo diff $PR_BASE_SHA..$PR_HEAD_SHA  (full diff)
+            * git -C ../amber-repo show $PR_HEAD_SHA  (commit details)
           - You can also view specific files:
             * git -C ../amber-repo show $PR_HEAD_SHA:path/to/file
 
