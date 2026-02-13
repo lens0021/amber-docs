@@ -77,7 +77,7 @@ jobs:
       contents: write
       pull-requests: write
     env:
-      MODEL: qwen2.5:7b
+      MODEL: qwen2.5:3b
     steps:
       - name: Set OLLAMA_MODELS
         run: echo "OLLAMA_MODELS=${{ runner.temp }}/ollama/models" >> $GITHUB_ENV
@@ -133,7 +133,11 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
       - name: Start Ollama
         run: |
-          ollama serve &
+          mkdir -p logs
+          nohup ollama serve > logs/ollama.log 2>&1 &
+          OLLAMA_PID=$!
+          echo "Ollama PID: $OLLAMA_PID"
+          echo "OLLAMA_PID=$OLLAMA_PID" >> $GITHUB_ENV
           echo "Waiting for Ollama..."
           until curl -s http://localhost:11434/api/tags > /dev/null; do sleep 1; done
       - name: Pull model
@@ -180,8 +184,15 @@ jobs:
 
           if [ "$GOOSE_EXIT" -ne 0 ]; then
             echo "goose failed with exit code $GOOSE_EXIT"
-            echo "goose logs:"
+            echo "::group::Goose logs"
             tail -n 200 "$LOG_PATH" || true
+            echo "::endgroup::"
+            echo "::group::Ollama logs"
+            tail -n 100 "$GITHUB_WORKSPACE/logs/ollama.log" || true
+            echo "::endgroup::"
+            echo "::group::Ollama status"
+            ps aux | grep ollama || true
+            echo "::endgroup::"
             exit 1
           fi
 
