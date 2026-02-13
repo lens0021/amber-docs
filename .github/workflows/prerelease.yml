@@ -78,6 +78,7 @@ jobs:
       pull-requests: write
     env:
       MODEL: qwen2.5:7b
+      OLLAMA_TIMEOUT: "10800"
     steps:
       - name: Set OLLAMA_MODELS
         run: echo "OLLAMA_MODELS=${{ runner.temp }}/ollama/models" >> $GITHUB_ENV
