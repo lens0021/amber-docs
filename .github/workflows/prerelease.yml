@@ -169,45 +169,55 @@ jobs:
         run: |
           mkdir -p .goose
 
-          # Create instruction file
-          cat > .goose/instructions.txt <<INST_EOF
+          # Phase 1: discover target docs files and per-file change points
+          cat > .goose/discover_targets.txt <<INST_EOF
           CONTEXT:
           - PR #${{ needs.review.outputs.smallest_missing_pr }}
           - PR metadata: .goose/pr_view_output.txt
           - Amber repo at: ../../amber-repo (commits: $PR_BASE_SHA..$PR_HEAD_SHA)
+          - Docs workspace root: current working directory (docs version directory)
 
           TASK:
           1. Read .goose/pr_view_output.txt to understand the PR
           2. Check what files changed: git -C ../../amber-repo diff --name-status $PR_BASE_SHA..$PR_HEAD_SHA
-          3. Update these docs as needed:
-             - getting_started/whats_new.md
-             - getting_started/migration_guide.md
+          3. Decide which markdown docs files under the current docs workspace should be updated, and list concrete change points per file.
 
           REQUIREMENTS:
-          - Use text_editor to view and str_replace files
-          - Add <!-- PR #${{ needs.review.outputs.smallest_missing_pr }} --> near changes
-          - NO TODO lists or planning - directly edit files
-          - If you need code details, use: git -C ../../amber-repo show $PR_HEAD_SHA:path/to/file
+          - Do not edit any file in this phase.
+          - Do not ask follow-up questions.
+          - Output must be exactly:
+            BEGIN_PLAN
+            FILE: <relative/path/to/file.md>
+            - <concrete change point>
+            - <concrete change point>
+            FILE: <relative/path/to/another_file.md>
+            - <concrete change point>
+            END_PLAN
+          - Include only files that need edits.
+          - Each listed file must include at least one change-point bullet.
+          - Keep each change point short and actionable.
+          - FILE paths must be relative to docs workspace and end with .md
+          - If no docs updates are needed, output only BEGIN_PLAN and END_PLAN lines.
           INST_EOF
 
-          LOG_PATH=".goose/goose.log"
+          DISCOVER_LOG=".goose/discover.log"
           set +e
           goose run \
             --provider ollama \
             --model ${{ env.MODEL }} \
             --with-builtin developer \
-            -i .goose/instructions.txt \
+            -i .goose/discover_targets.txt \
             --no-session \
             --max-turns 50 \
             --debug \
-            --output-format text 2>&1 | tee "$LOG_PATH"
+            --output-format text 2>&1 | tee "$DISCOVER_LOG"
           GOOSE_EXIT=${PIPESTATUS[0]}
           set -e
 
           if [ "$GOOSE_EXIT" -ne 0 ]; then
-            echo "goose failed with exit code $GOOSE_EXIT"
+            echo "goose (discover phase) failed with exit code $GOOSE_EXIT"
             echo "::group::Goose logs"
-            tail -n 200 "$LOG_PATH" || true
+            tail -n 200 "$DISCOVER_LOG" || true
             echo "::endgroup::"
             echo "::group::Ollama logs"
             tail -n 100 "$GITHUB_WORKSPACE/logs/ollama.log" || true
@@ -218,11 +228,120 @@ jobs:
             exit 1
           fi
 
-          if git -C "$GITHUB_WORKSPACE" diff --quiet -- "$DOCS_WORKDIR"; then
-            echo "goose did not produce changes under $DOCS_WORKDIR"
+          awk '/^BEGIN_PLAN$/,/^END_PLAN$/' "$DISCOVER_LOG" | sed '1d;$d' > .goose/plan_raw.txt
+
+          trim() {
+            local s="$1"
+            s="${s#"${s%%[![:space:]]*}"}"
+            s="${s%"${s##*[![:space:]]}"}"
+            printf '%s' "$s"
+          }
+
+          : > .goose/tasks.tsv
+          current=""
+          while IFS= read -r line; do
+            if [[ "$line" =~ ^FILE:[[:space:]]*(.*)$ ]]; then
+              current="$(trim "${BASH_REMATCH[1]}")"
+              continue
+            fi
+
+            if [[ "$line" =~ ^[[:space:]]*-[[:space:]]+(.+)$ ]]; then
+              point="$(trim "${BASH_REMATCH[1]}")"
+              if [[ -n "$current" ]] \
+                && [[ "$current" == *.md ]] \
+                && [[ "$current" != /* ]] \
+                && [[ "$current" != *".."* ]] \
+                && [ -n "$point" ]; then
+                printf '%s\t%s\n' "$current" "$point" >> .goose/tasks.tsv
+              fi
+            fi
+          done < .goose/plan_raw.txt
+
+          echo "::group::Goose tasks (file<TAB>point)"
+          cat .goose/tasks.tsv || true
+          echo "::endgroup::"
+
+          if [ ! -s .goose/tasks.tsv ]; then
+            echo "No valid (file, change-point) tasks discovered by goose."
             echo "::group::Goose logs"
-            tail -n 200 "$LOG_PATH" || true
+            tail -n 200 "$DISCOVER_LOG" || true
             echo "::endgroup::"
+            exit 1
+          fi
+
+          # Phase 2: run goose once per (target file, change point)
+          CHANGED_ANY=0
+          TASK_INDEX=0
+          while IFS=$'\t' read -r TARGET_FILE CHANGE_POINT; do
+            [ -n "$TARGET_FILE" ] || continue
+            [ -n "$CHANGE_POINT" ] || continue
+            TASK_INDEX=$((TASK_INDEX + 1))
+            TARGET_BASENAME="$(basename "$TARGET_FILE")"
+            TARGET_LOG=".goose/edit_${TASK_INDEX}_${TARGET_BASENAME}.log"
+            TARGET_INST=".goose/edit_${TASK_INDEX}_${TARGET_BASENAME}.txt"
+            if [ -f "$TARGET_FILE" ]; then
+              BEFORE_HASH="$(sha256sum "$TARGET_FILE" | awk '{print $1}')"
+            else
+              BEFORE_HASH=""
+            fi
+
+            cat > "$TARGET_INST" <<INST_EOF
+          CONTEXT:
+          - PR #${{ needs.review.outputs.smallest_missing_pr }}
+          - PR metadata: .goose/pr_view_output.txt
+          - Amber repo at: ../../amber-repo (commits: $PR_BASE_SHA..$PR_HEAD_SHA)
+          - Target doc file: $TARGET_FILE
+          - Target change point: $CHANGE_POINT
+
+          TASK:
+          1. Read .goose/pr_view_output.txt and changed files from amber repo
+          2. Apply ONLY the target change point to ONLY $TARGET_FILE
+
+          REQUIREMENTS:
+          - Use text_editor to view and str_replace files
+          - Add <!-- PR #${{ needs.review.outputs.smallest_missing_pr }} --> near changes
+          - Do not modify any other files
+          - Do not ask follow-up questions
+          - If no change is needed for this specific change point, print exactly: NO_CHANGE
+          - If you need code details, use: git -C ../../amber-repo show $PR_HEAD_SHA:path/to/file
+          INST_EOF
+
+            set +e
+            goose run \
+              --provider ollama \
+              --model ${{ env.MODEL }} \
+              --with-builtin developer \
+              -i "$TARGET_INST" \
+              --no-session \
+              --max-turns 50 \
+              --debug \
+              --output-format text 2>&1 | tee "$TARGET_LOG"
+            GOOSE_EXIT=${PIPESTATUS[0]}
+            set -e
+
+            if [ "$GOOSE_EXIT" -ne 0 ]; then
+              echo "goose (edit phase) failed for $TARGET_FILE [$CHANGE_POINT] with exit code $GOOSE_EXIT"
+              echo "::group::Goose logs: $TARGET_FILE [$CHANGE_POINT]"
+              tail -n 200 "$TARGET_LOG" || true
+              echo "::endgroup::"
+              exit 1
+            fi
+
+            if [ -f "$TARGET_FILE" ]; then
+              AFTER_HASH="$(sha256sum "$TARGET_FILE" | awk '{print $1}')"
+            else
+              AFTER_HASH=""
+            fi
+            if [ "$BEFORE_HASH" = "$AFTER_HASH" ]; then
+              echo "No edits produced for $TARGET_FILE [$CHANGE_POINT]"
+            else
+              CHANGED_ANY=1
+              echo "Edits produced for $TARGET_FILE [$CHANGE_POINT]"
+            fi
+          done < .goose/tasks.tsv
+
+          if [ "$CHANGED_ANY" -eq 0 ]; then
+            echo "goose completed but did not produce changes under $DOCS_WORKDIR"
             echo "::group::Ollama logs"
             tail -n 100 "$GITHUB_WORKSPACE/logs/ollama.log" || true
             echo "::endgroup::"
