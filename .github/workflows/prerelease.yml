@@ -170,40 +170,23 @@ jobs:
 
           # Create instruction file
           cat > .goose/instructions.txt <<INST_EOF
-          You MUST use the developer toolkit's tools (text_editor and shell).
-
           CONTEXT:
-          - PR number: #${{ needs.review.outputs.smallest_missing_pr }}
-          - amber-lang/amber repository is checked out at: ../amber-repo
-          - PR head commit: $PR_HEAD_SHA
-          - PR base commit: $PR_BASE_SHA
+          - PR #${{ needs.review.outputs.smallest_missing_pr }}
+          - PR metadata: .goose/pr_view_output.txt
+          - Amber repo at: ../../amber-repo (commits: $PR_BASE_SHA..$PR_HEAD_SHA)
 
-          Step 1: Read PR metadata
-          - Use text_editor with command="view" to read .goose/pr_view_output.txt
+          TASK:
+          1. Read .goose/pr_view_output.txt to understand the PR
+          2. Check what files changed: git -C ../../amber-repo diff --name-status $PR_BASE_SHA..$PR_HEAD_SHA
+          3. Update these docs as needed:
+             - getting_started/whats_new.md
+             - getting_started/migration_guide.md
 
-          Step 2: Review code changes from the PR
-          - Use shell tool to run git commands in the amber repository:
-            * git -C ../amber-repo diff --name-status $PR_BASE_SHA..$PR_HEAD_SHA  (list changed files)
-            * git -C ../amber-repo log --oneline $PR_BASE_SHA..$PR_HEAD_SHA  (commit messages)
-            * git -C ../amber-repo diff $PR_BASE_SHA..$PR_HEAD_SHA  (full diff)
-            * git -C ../amber-repo show $PR_HEAD_SHA  (commit details)
-          - You can also view specific files:
-            * git -C ../amber-repo show $PR_HEAD_SHA:path/to/file
-
-          Step 3: Update documentation files
-          - Use text_editor with command="view" to read existing documentation
-          - Use text_editor with command="str_replace" to modify files
-          - Common documentation files:
-            * getting_started/new_changes.md
-            * getting_started/whats_new.md
-            * getting_started/migration_guide.md
-
-          CRITICAL REQUIREMENTS:
-          - DO NOT use read_resource tool
-          - DO NOT create TODO lists, task files, or planning documents
-          - DIRECTLY modify the documentation markdown files with text_editor
-          - Add this comment near your changes: <!-- PR #${{ needs.review.outputs.smallest_missing_pr }} -->
-          - You MUST actually write content to files, not just plan to do it
+          REQUIREMENTS:
+          - Use text_editor to view and str_replace files
+          - Add <!-- PR #${{ needs.review.outputs.smallest_missing_pr }} --> near changes
+          - NO TODO lists or planning - directly edit files
+          - If you need code details, use: git -C ../../amber-repo show $PR_HEAD_SHA:path/to/file
           INST_EOF
 
           LOG_PATH=".goose/goose.log"
