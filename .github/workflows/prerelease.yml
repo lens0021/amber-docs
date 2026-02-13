@@ -77,7 +77,7 @@ jobs:
       contents: write
       pull-requests: write
     env:
-      MODEL: llama3.1:8b
+      MODEL: qwen2.5:7b
     steps:
       - name: Set OLLAMA_MODELS
         run: echo "OLLAMA_MODELS=${{ runner.temp }}/ollama/models" >> $GITHUB_ENV
