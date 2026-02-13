@@ -88,19 +88,19 @@ jobs:
           LATEST_DOCS_VERSION_DIR=$(ls -d docs/*/ | sort -V | tail -n 1)
           echo "Latest docs version directory: $LATEST_DOCS_VERSION_DIR"
           echo "LATEST_DOCS_VERSION_DIR=$LATEST_DOCS_VERSION_DIR" >> "$GITHUB_ENV"
-          echo "NANOCODER_WORKDIR=$LATEST_DOCS_VERSION_DIR" >> "$GITHUB_ENV"
+          echo "DOCS_WORKDIR=$LATEST_DOCS_VERSION_DIR" >> "$GITHUB_ENV"
       - name: Prepare goose workspace
         run: |
-          mkdir -p "${{ env.NANOCODER_WORKDIR }}/.goose"
+          mkdir -p "${{ env.DOCS_WORKDIR }}/.goose"
       - name: Get PR info
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ needs.review.outputs.smallest_missing_pr }}
         run: |
           echo "Attempting to get info for PR #$PR_NUMBER from amber-lang/amber"
-          mkdir -p "${{ env.NANOCODER_WORKDIR }}/.goose"
-          gh pr view "$PR_NUMBER" --repo amber-lang/amber > "${{ env.NANOCODER_WORKDIR }}/.goose/pr_view_output.txt"
-          gh pr diff "$PR_NUMBER" --repo amber-lang/amber > "${{ env.NANOCODER_WORKDIR }}/.goose/pr_diff_output.txt"
+          mkdir -p "${{ env.DOCS_WORKDIR }}/.goose"
+          gh pr view "$PR_NUMBER" --repo amber-lang/amber > "${{ env.DOCS_WORKDIR }}/.goose/pr_view_output.txt"
+          gh pr diff "$PR_NUMBER" --repo amber-lang/amber > "${{ env.DOCS_WORKDIR }}/.goose/pr_diff_output.txt"
       - name: Get ollama version
         id: version-ollama
         shell: bash
@@ -196,17 +196,17 @@ jobs:
             exit 1
           fi
 
-          if git -C "$GITHUB_WORKSPACE" diff --quiet -- "$NANOCODER_WORKDIR"; then
-            echo "goose did not produce changes under $NANOCODER_WORKDIR"
+          if git -C "$GITHUB_WORKSPACE" diff --quiet -- "$DOCS_WORKDIR"; then
+            echo "goose did not produce changes under $DOCS_WORKDIR"
             exit 1
           fi
-        working-directory: ${{ env.NANOCODER_WORKDIR }}
+        working-directory: ${{ env.DOCS_WORKDIR }}
         env:
           GOOSE_PROVIDER: ollama
           OLLAMA_HOST: http://localhost:11434
       - name: Clean goose task state
         run: |
-          rm -rf "${{ env.NANOCODER_WORKDIR }}/.goose"
+          rm -rf "${{ env.DOCS_WORKDIR }}/.goose"
           git checkout -- .github 2>/dev/null || true
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
