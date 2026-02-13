@@ -118,6 +118,13 @@ jobs:
           echo "PR base commit: $BASE_SHA"
           echo "PR_HEAD_SHA=$HEAD_SHA" >> $GITHUB_ENV
           echo "PR_BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
+
+          # Pre-compute diff info for goose instructions
+          git -C amber-repo diff --name-status "$BASE_SHA..$HEAD_SHA" > "${{ env.DOCS_WORKDIR }}/.goose/diff_names.txt"
+
+          # List available docs files
+          find "${{ env.DOCS_WORKDIR }}" -name '*.md' -not -path '*/.goose/*' | \
+            sed "s|^${{ env.DOCS_WORKDIR }}/||" | sort > "${{ env.DOCS_WORKDIR }}/.goose/docs_files.txt"
       - name: Get ollama version
         id: version-ollama
         shell: bash
@@ -170,34 +177,27 @@ jobs:
           mkdir -p .goose
 
           # Phase 1: discover target docs files and per-file change points
+          PR_VIEW="$(cat .goose/pr_view_output.txt)"
+          DIFF_NAMES="$(cat .goose/diff_names.txt)"
+          DOCS_FILES="$(cat .goose/docs_files.txt)"
+
           cat > .goose/discover_targets.txt <<INST_EOF
-          CONTEXT:
-          - PR #${{ needs.review.outputs.smallest_missing_pr }}
-          - PR metadata: .goose/pr_view_output.txt
-          - Amber repo at: ../../amber-repo (commits: $PR_BASE_SHA..$PR_HEAD_SHA)
-          - Docs workspace root: current working directory (docs version directory)
+          PR #${{ needs.review.outputs.smallest_missing_pr }} info:
+          $PR_VIEW
 
-          TASK:
-          1. Read .goose/pr_view_output.txt to understand the PR
-          2. Check what files changed: git -C ../../amber-repo diff --name-status $PR_BASE_SHA..$PR_HEAD_SHA
-          3. Decide which markdown docs files under the current docs workspace should be updated, and list concrete change points per file.
+          Files changed in this PR:
+          $DIFF_NAMES
 
-          REQUIREMENTS:
-          - Do not edit any file in this phase.
-          - Do not ask follow-up questions.
-          - Output must be exactly:
-            BEGIN_PLAN
-            FILE: <relative/path/to/file.md>
-            - <concrete change point>
-            - <concrete change point>
-            FILE: <relative/path/to/another_file.md>
-            - <concrete change point>
-            END_PLAN
-          - Include only files that need edits.
-          - Each listed file must include at least one change-point bullet.
-          - Keep each change point short and actionable.
-          - FILE paths must be relative to docs workspace and end with .md
-          - If no docs updates are needed, output only BEGIN_PLAN and END_PLAN lines.
+          Docs files available:
+          $DOCS_FILES
+
+          Which docs files above need updating for this PR? Output exactly:
+          BEGIN_PLAN
+          FILE: <path from docs files list>
+          - <what to change>
+          END_PLAN
+
+          If none need updating, output BEGIN_PLAN and END_PLAN with nothing between.
           INST_EOF
 
           DISCOVER_LOG=".goose/discover.log"
@@ -208,7 +208,7 @@ jobs:
             --with-builtin developer \
             -i .goose/discover_targets.txt \
             --no-session \
-            --max-turns 50 \
+            --max-turns 5 \
             --debug \
             --output-format text 2>&1 | tee "$DISCOVER_LOG"
           GOOSE_EXIT=${PIPESTATUS[0]}
@@ -285,25 +285,24 @@ jobs:
               BEFORE_HASH=""
             fi
 
+            PR_VIEW="$(cat .goose/pr_view_output.txt)"
+            TARGET_CONTENT=""
+            if [ -f "$TARGET_FILE" ]; then
+              TARGET_CONTENT="$(cat "$TARGET_FILE")"
+            fi
+
             cat > "$TARGET_INST" <<INST_EOF
-          CONTEXT:
-          - PR #${{ needs.review.outputs.smallest_missing_pr }}
-          - PR metadata: .goose/pr_view_output.txt
-          - Amber repo at: ../../amber-repo (commits: $PR_BASE_SHA..$PR_HEAD_SHA)
-          - Target doc file: $TARGET_FILE
-          - Target change point: $CHANGE_POINT
+          PR #${{ needs.review.outputs.smallest_missing_pr }} info:
+          $PR_VIEW
 
-          TASK:
-          1. Read .goose/pr_view_output.txt and changed files from amber repo
-          2. Apply ONLY the target change point to ONLY $TARGET_FILE
+          Current content of $TARGET_FILE:
+          $TARGET_CONTENT
 
-          REQUIREMENTS:
-          - Use text_editor to view and str_replace files
-          - Add <!-- PR #${{ needs.review.outputs.smallest_missing_pr }} --> near changes
-          - Do not modify any other files
-          - Do not ask follow-up questions
-          - If no change is needed for this specific change point, print exactly: NO_CHANGE
-          - If you need code details, use: git -C ../../amber-repo show $PR_HEAD_SHA:path/to/file
+          Task: $CHANGE_POINT
+          Add <!-- PR #${{ needs.review.outputs.smallest_missing_pr }} --> near your changes.
+          To see code changes: git -C ../../amber-repo diff $PR_BASE_SHA..$PR_HEAD_SHA -- path/to/file
+          Edit $TARGET_FILE using text_editor. Do not edit other files.
+          If no change is needed, print: NO_CHANGE
           INST_EOF
 
             set +e
@@ -313,7 +312,7 @@ jobs:
               --with-builtin developer \
               -i "$TARGET_INST" \
               --no-session \
-              --max-turns 50 \
+              --max-turns 10 \
               --debug \
               --output-format text 2>&1 | tee "$TARGET_LOG"
             GOOSE_EXIT=${PIPESTATUS[0]}
