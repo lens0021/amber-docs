@@ -82,6 +82,12 @@ jobs:
       - name: Set OLLAMA_MODELS
         run: echo "OLLAMA_MODELS=${{ runner.temp }}/ollama/models" >> $GITHUB_ENV
       - uses: actions/checkout@v5
+      - name: Checkout amber repository
+        uses: actions/checkout@v5
+        with:
+          repository: amber-lang/amber
+          path: amber-repo
+          fetch-depth: 0
       - name: Get latest docs version and content
         id: get-docs-content
         run: |
@@ -99,8 +105,18 @@ jobs:
         run: |
           echo "Attempting to get info for PR #$PR_NUMBER from amber-lang/amber"
           mkdir -p "${{ env.DOCS_WORKDIR }}/.goose"
+
+          # Save PR metadata
           gh pr view "$PR_NUMBER" --repo amber-lang/amber > "${{ env.DOCS_WORKDIR }}/.goose/pr_view_output.txt"
-          gh pr diff "$PR_NUMBER" --repo amber-lang/amber > "${{ env.DOCS_WORKDIR }}/.goose/pr_diff_output.txt"
+
+          # Get commit SHAs for goose to use with git commands
+          HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo amber-lang/amber --json headRefOid --jq .headRefOid)
+          BASE_SHA=$(gh pr view "$PR_NUMBER" --repo amber-lang/amber --json baseRefOid --jq .baseRefOid)
+
+          echo "PR head commit: $HEAD_SHA"
+          echo "PR base commit: $BASE_SHA"
+          echo "PR_HEAD_SHA=$HEAD_SHA" >> $GITHUB_ENV
+          echo "PR_BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
       - name: Get ollama version
         id: version-ollama
         shell: bash
@@ -150,15 +166,28 @@ jobs:
           mkdir -p .goose
 
           # Create instruction file
-          cat > .goose/instructions.txt <<'INST_EOF'
-          You MUST use the developer toolkit's text_editor tool to read and edit files.
+          cat > .goose/instructions.txt <<INST_EOF
+          You MUST use the developer toolkit's tools (text_editor and shell).
 
-          Step 1: Read PR information using text_editor:
+          CONTEXT:
+          - PR number: #${{ needs.review.outputs.smallest_missing_pr }}
+          - amber-lang/amber repository is checked out at: ../amber-repo
+          - PR head commit: $PR_HEAD_SHA
+          - PR base commit: $PR_BASE_SHA
+
+          Step 1: Read PR metadata
           - Use text_editor with command="view" to read .goose/pr_view_output.txt
-          - Use text_editor with command="view" to read .goose/pr_diff_output.txt
 
-          Step 2: Based on the PR content, update documentation files using text_editor:
-          - Use text_editor with command="view" to read existing content
+          Step 2: Review code changes from the PR
+          - Use shell tool to run git commands in the amber repository:
+            * git -C ../amber-repo diff $PR_BASE_SHA..$PR_HEAD_SHA
+            * git -C ../amber-repo log --oneline $PR_BASE_SHA..$PR_HEAD_SHA
+            * git -C ../amber-repo show $PR_HEAD_SHA
+          - You can also view specific files:
+            * git -C ../amber-repo show $PR_HEAD_SHA:path/to/file
+
+          Step 3: Update documentation files
+          - Use text_editor with command="view" to read existing documentation
           - Use text_editor with command="str_replace" to modify files
           - Common documentation files:
             * getting_started/new_changes.md
@@ -166,7 +195,7 @@ jobs:
             * getting_started/migration_guide.md
 
           CRITICAL REQUIREMENTS:
-          - DO NOT use read_resource or any other tool to read files
+          - DO NOT use read_resource tool
           - DO NOT create TODO lists, task files, or planning documents
           - DIRECTLY modify the documentation markdown files with text_editor
           - Add this comment near your changes: <!-- PR #${{ needs.review.outputs.smallest_missing_pr }} -->
