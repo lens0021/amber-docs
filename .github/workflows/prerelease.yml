@@ -151,21 +151,26 @@ jobs:
 
           # Create instruction file
           cat > .goose/instructions.txt <<'INST_EOF'
-          Read the Pull Request information from these files:
-          - .goose/pr_view_output.txt (PR description and metadata)
-          - .goose/pr_diff_output.txt (code changes)
+          You MUST use the developer toolkit's text_editor tool to read and edit files.
 
-          Based on the PR content, update the appropriate documentation files to document these changes.
-          Common documentation files include:
-          - getting_started/new_changes.md
-          - getting_started/whats_new.md
-          - getting_started/migration_guide.md
+          Step 1: Read PR information using text_editor:
+          - Use text_editor with command="view" to read .goose/pr_view_output.txt
+          - Use text_editor with command="view" to read .goose/pr_diff_output.txt
 
-          IMPORTANT:
+          Step 2: Based on the PR content, update documentation files using text_editor:
+          - Use text_editor with command="view" to read existing content
+          - Use text_editor with command="str_replace" to modify files
+          - Common documentation files:
+            * getting_started/new_changes.md
+            * getting_started/whats_new.md
+            * getting_started/migration_guide.md
+
+          CRITICAL REQUIREMENTS:
+          - DO NOT use read_resource or any other tool to read files
           - DO NOT create TODO lists, task files, or planning documents
-          - DIRECTLY modify the documentation markdown files
+          - DIRECTLY modify the documentation markdown files with text_editor
           - Add this comment near your changes: <!-- PR #${{ needs.review.outputs.smallest_missing_pr }} -->
-          - Make sure to actually write content to files, not just plan to do it
+          - You MUST actually write content to files, not just plan to do it
           INST_EOF
 
           LOG_PATH=".goose/goose.log"
@@ -198,6 +203,15 @@ jobs:
 
           if git -C "$GITHUB_WORKSPACE" diff --quiet -- "$DOCS_WORKDIR"; then
             echo "goose did not produce changes under $DOCS_WORKDIR"
+            echo "::group::Goose logs"
+            tail -n 200 "$LOG_PATH" || true
+            echo "::endgroup::"
+            echo "::group::Ollama logs"
+            tail -n 100 "$GITHUB_WORKSPACE/logs/ollama.log" || true
+            echo "::endgroup::"
+            echo "::group::Ollama status"
+            ps aux | grep ollama || true
+            echo "::endgroup::"
             exit 1
           fi
         working-directory: ${{ env.DOCS_WORKDIR }}
