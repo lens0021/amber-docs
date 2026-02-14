@@ -181,20 +181,31 @@ jobs:
           DIFF_NAMES="$(cat .goose/diff_names.txt)"
           DOCS_FILES="$(cat .goose/docs_files.txt)"
 
-          cat > .goose/discover_targets.txt <<INST_EOF
-          PR #${{ needs.review.outputs.smallest_missing_pr }} info:
-          $PR_VIEW
+          PR_TITLE=$(echo "$PR_VIEW" | head -n1)
 
-          Files changed in this PR:
+          cat > .goose/discover_targets.txt <<INST_EOF
+          TASK: Identify which documentation files need updates for this PR
+
+          PR #${{ needs.review.outputs.smallest_missing_pr }}: $PR_TITLE
+
+          Changed files in PR:
           $DIFF_NAMES
 
-          Docs files available:
+          Available docs files:
           $DOCS_FILES
 
-          This PR must be documented. Which docs files above need updating? Output exactly:
+          OUTPUT FORMAT (exactly as shown):
           BEGIN_PLAN
-          FILE: <path from docs files list>
-          - <what to change>
+          FILE: <exact path from docs files list>
+          - <brief change description>
+          END_PLAN
+
+          Example:
+          BEGIN_PLAN
+          FILE: getting_started/whats_new.md
+          - Add new feature X to release notes
+          FILE: getting_started/installation.md
+          - Update installation steps for change Y
           END_PLAN
           INST_EOF
 
@@ -206,7 +217,7 @@ jobs:
             --with-builtin developer \
             -i .goose/discover_targets.txt \
             --no-session \
-            --max-turns 5 \
+            --max-turns 3 \
             --debug \
             --output-format text 2>&1 | tee "$DISCOVER_LOG"
           GOOSE_EXIT=${PIPESTATUS[0]}
@@ -284,23 +295,25 @@ jobs:
             fi
 
             PR_VIEW="$(cat .goose/pr_view_output.txt)"
-            TARGET_CONTENT=""
-            if [ -f "$TARGET_FILE" ]; then
-              TARGET_CONTENT="$(cat "$TARGET_FILE")"
-            fi
+            PR_TITLE=$(echo "$PR_VIEW" | head -n1)
 
             cat > "$TARGET_INST" <<INST_EOF
-          PR #${{ needs.review.outputs.smallest_missing_pr }} info:
-          $PR_VIEW
+          OBJECTIVE: $CHANGE_POINT
 
-          Current content of $TARGET_FILE:
-          $TARGET_CONTENT
+          CONTEXT:
+          - PR #${{ needs.review.outputs.smallest_missing_pr }}: $PR_TITLE
+          - File to edit: $TARGET_FILE
+          - Use 'gh pr diff ${{ needs.review.outputs.smallest_missing_pr }} --repo amber-lang/amber' to see code changes
 
-          Task: $CHANGE_POINT
-          Add <!-- PR #${{ needs.review.outputs.smallest_missing_pr }} --> near your changes.
-          To see code changes: gh pr diff ${{ needs.review.outputs.smallest_missing_pr }} --repo amber-lang/amber
-          Edit $TARGET_FILE using text_editor. Do not edit other files.
-          If no change is needed, print: NO_CHANGE
+          REQUIRED STEPS:
+          1. Read $TARGET_FILE with text_editor
+          2. Make the required changes for the objective above
+          3. Add comment <!-- PR #${{ needs.review.outputs.smallest_missing_pr }} --> near your changes
+          4. Keep changes minimal and focused
+
+          IMPORTANT:
+          - DO NOT edit other files
+          - If objective is unclear or changes not needed, output exactly: NO_CHANGE
           INST_EOF
 
             set +e
@@ -310,7 +323,7 @@ jobs:
               --with-builtin developer \
               -i "$TARGET_INST" \
               --no-session \
-              --max-turns 10 \
+              --max-turns 6 \
               --debug \
               --output-format text 2>&1 | tee "$TARGET_LOG"
             GOOSE_EXIT=${PIPESTATUS[0]}
